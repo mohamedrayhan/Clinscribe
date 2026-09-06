@@ -1,11 +1,25 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Mic, Upload, Square, Loader2, Play } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { ArrowLeft, Mic, Upload, Square, Loader2, Play, FileAudio } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const AudioConsultation = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const routeState = location.state as { patientId?: number, patientName?: string } || {};
   const [status, setStatus] = useState<'idle' | 'recording' | 'processing' | 'done'>('idle');
   const [recordingTime, setRecordingTime] = useState(0);
+  const [dragActive, setDragActive] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const [partialTranscript, setPartialTranscript] = useState('');
+  const liveTranscriptRef = useRef('');
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
 
   // Formatting for timer (MM:SS)
   const formatTime = (seconds: number) => {
@@ -14,7 +28,7 @@ const AudioConsultation = () => {
     return `${m}:${s}`;
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
     if (status === 'recording') {
       interval = setInterval(() => {
@@ -24,28 +38,217 @@ const AudioConsultation = () => {
     return () => clearInterval(interval);
   }, [status]);
 
-  const handleStartRecording = () => {
-    setStatus('recording');
-    // In a real app, we would use MediaRecorder API here
+  const handleStartRecording = async () => {
+    try {
+      setUploadError('');
+      setLiveTranscript('');
+      setPartialTranscript('');
+      
+      // 1. Get Mic FIRST (so exceptions are caught)
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      
+      // 2. Get Token
+      const res = await fetch('http://127.0.0.1:8000/api/aai-token');
+      if (!res.ok) {
+        throw new Error("Failed to authenticate with AssemblyAI");
+      }
+      const { token } = await res.json();
+      
+      // 3. Connect to WS
+      const wsUrl = `wss://streaming.assemblyai.com/v3/ws?sample_rate=16000&speech_model=universal-3-5-pro&mode=balanced&token=${token}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          console.log("AAI Message:", msg);
+          
+          // Universal-3 streaming uses 'Turn' with 'transcript'
+          if (msg.type === 'Turn') {
+            if (msg.end_of_turn) {
+              setLiveTranscript(prev => {
+                const updated = (prev ? prev + ' ' : '') + msg.transcript;
+                liveTranscriptRef.current = updated;
+                try { localStorage.setItem('clinscribe_latest_transcript', updated); } catch (_) {}
+                return updated;
+              });
+              setPartialTranscript('');
+            } else {
+              setPartialTranscript(msg.transcript || '');
+            }
+          } 
+          // Older/fallback format compatibility
+          else if (msg.message_type === 'FinalTranscript' && msg.text) {
+            setLiveTranscript(prev => {
+              const updated = (prev ? prev + ' ' : '') + msg.text;
+              liveTranscriptRef.current = updated;
+              try { localStorage.setItem('clinscribe_latest_transcript', updated); } catch (_) {}
+              return updated;
+            });
+            setPartialTranscript('');
+          } else if (msg.message_type === 'PartialTranscript' && msg.text) {
+            setPartialTranscript(msg.text);
+          } else if (msg.text) {
+            setPartialTranscript(msg.text);
+          }
+        } catch (err) {
+          console.error("Error parsing WS message:", err);
+        }
+      };
+      
+      ws.onclose = (e) => {
+        console.warn("AAI WebSocket closed. Code:", e.code, "Reason:", e.reason);
+      };
+      
+      ws.onopen = async () => {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        // In many browsers, sampleRate in constructor might be fixed to hardware (e.g. 44100 or 48000)
+        const context = new AudioContextClass();
+        audioContextRef.current = context;
+        
+        if (context.state === 'suspended') {
+          await context.resume();
+        }
+        
+        const actualSampleRate = context.sampleRate;
+        const targetSampleRate = 16000;
+        console.log(`AudioContext initialized at ${actualSampleRate} Hz, target: ${targetSampleRate} Hz`);
+
+        const source = context.createMediaStreamSource(stream);
+        // Buffer size 4096 gives ~85ms chunks at 48kHz or ~256ms at 16kHz
+        const processor = context.createScriptProcessor(4096, 1, 1);
+        processorRef.current = processor;
+        
+        // Gain 0 prevents feedback loop into speakers
+        const gainNode = context.createGain();
+        gainNode.gain.value = 0;
+        
+        processor.onaudioprocess = (e) => {
+          if (ws.readyState === WebSocket.OPEN) {
+            const inputData = e.inputBuffer.getChannelData(0);
+            
+            // Resample down to 16000 Hz if hardware runs at 44100 / 48000 Hz
+            let outputData: Float32Array;
+            if (actualSampleRate === targetSampleRate) {
+              outputData = inputData;
+            } else {
+              const ratio = actualSampleRate / targetSampleRate;
+              const newLength = Math.round(inputData.length / ratio);
+              outputData = new Float32Array(newLength);
+              for (let i = 0; i < newLength; i++) {
+                const srcIndex = Math.min(Math.round(i * ratio), inputData.length - 1);
+                outputData[i] = inputData[srcIndex];
+              }
+            }
+            
+            // Convert to 16-bit PCM (little endian)
+            const pcm16 = new Int16Array(outputData.length);
+            for (let i = 0; i < outputData.length; i++) {
+              const s = Math.max(-1, Math.min(1, outputData[i]));
+              pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            ws.send(pcm16.buffer);
+          }
+        };
+        
+        source.connect(processor);
+        processor.connect(gainNode);
+        gainNode.connect(context.destination);
+        
+        setStatus('recording');
+      };
+      
+      ws.onerror = (e) => {
+        console.error("WebSocket error:", e);
+        setUploadError("Connection to AssemblyAI failed.");
+        setStatus('idle');
+      };
+      
+    } catch (err) {
+      console.error("Recording error:", err);
+      setUploadError("Could not start recording. Check microphone permissions.");
+      setStatus('idle');
+    }
   };
 
   const handleStopRecording = () => {
     setStatus('processing');
-    // Simulate processing timeline jump to TextConsultation's completed state
+    
+    // Stop recording logic
+    if (processorRef.current && audioContextRef.current) {
+      processorRef.current.disconnect();
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(t => t.stop());
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+    }
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'Terminate' }));
+      wsRef.current.close();
+    }
+    
     setTimeout(() => {
       setStatus('done');
-    }, 2000);
+    }, 2500);
   };
 
-  const handleFileUpload = () => {
-    setStatus('processing');
-    setTimeout(() => {
-      setStatus('done');
-    }, 2000);
+  const validateFile = (file: File) => {
+    const validTypes = ['audio/mpeg', 'audio/wav', 'audio/x-m4a', 'audio/m4a', 'audio/mp4'];
+    if (!validTypes.includes(file.type)) {
+      setUploadError('Invalid file format. Please upload MP3, WAV, or M4A.');
+      return false;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      setUploadError('File exceeds 50MB limit.');
+      return false;
+    }
+    return true;
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (validateFile(file)) {
+        setUploadError('');
+        setStatus('processing');
+        setTimeout(() => {
+          setStatus('done');
+        }, 2500);
+      }
+    }
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      if (validateFile(file)) {
+        setUploadError('');
+        setStatus('processing');
+        setTimeout(() => {
+          setStatus('done');
+        }, 2500);
+      }
+    }
   };
 
   if (status === 'done') {
-    // In a real flow, it would redirect to the split screen. For now, just a success state.
     return (
       <div className="max-w-4xl mx-auto flex flex-col items-center justify-center mt-20">
         <div className="w-16 h-16 bg-success/10 text-success rounded-full flex items-center justify-center mb-6">
@@ -56,7 +259,15 @@ const AudioConsultation = () => {
           The audio has been successfully transcribed, diarized, and analyzed.
         </p>
         <button 
-          onClick={() => navigate('/consultations/new/text')}
+          onClick={() => {
+            const finalTranscript = liveTranscriptRef.current.trim() || liveTranscript.trim();
+            navigate('/consultations/new/text', { 
+              state: { 
+                ...routeState, 
+                liveTranscript: finalTranscript 
+              } 
+            });
+          }}
           className="bg-accent text-white px-6 py-2.5 rounded-md font-medium text-[14px] hover:bg-accent/90 transition-colors"
         >
           View Clinical Documentation
@@ -70,7 +281,7 @@ const AudioConsultation = () => {
       <div className="max-w-2xl mx-auto flex flex-col items-center justify-center mt-20">
         <h2 className="text-[13px] font-semibold text-text-secondary uppercase tracking-wider mb-8">Processing Audio</h2>
         <div className="w-full space-y-4">
-          <div className="flex items-center justify-between p-3 border border-border rounded-md bg-surface">
+          <div className="flex items-center justify-between p-3 border border-border rounded-md bg-surface shadow-sm">
             <span className="text-[14px] font-medium text-accent">Noise Reduction & Segmentation</span>
             <div className="flex items-center space-x-2 text-accent text-[12px] font-semibold uppercase tracking-wider">
               <Loader2 size={14} className="animate-spin" />
@@ -112,6 +323,11 @@ const AudioConsultation = () => {
         {/* Record Option */}
         <div className="flex flex-col p-8 bg-surface border border-border rounded-xl">
           <div className="flex-1 flex flex-col items-center justify-center py-10">
+            {uploadError && status === 'idle' && (
+              <div className="w-full max-w-xs mb-6 p-3 bg-critical/10 border border-critical/20 rounded-md text-[13px] text-critical text-center font-medium">
+                {uploadError}
+              </div>
+            )}
             {status === 'idle' ? (
               <>
                 <button 
@@ -122,22 +338,35 @@ const AudioConsultation = () => {
                 </button>
                 <h2 className="text-[18px] font-semibold text-text-primary mb-2">Record Live</h2>
                 <p className="text-[14px] text-text-secondary text-center max-w-xs">
-                  Ensure you have patient consent before beginning the recording.
+                  Browser-based recording. Ensure you have patient consent before beginning.
                 </p>
               </>
             ) : (
               <>
-                <div className="w-20 h-20 border-4 border-critical/30 rounded-full flex items-center justify-center mb-6 animate-pulse">
-                  <div className="w-16 h-16 bg-critical/20 text-critical rounded-full flex items-center justify-center">
-                    <Mic size={28} />
-                  </div>
+                <div className="w-full flex justify-center mb-6 h-20 items-end space-x-1 opacity-70">
+                  {/* CSS Animated Waveform Mock */}
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((bar) => (
+                    <div 
+                      key={bar} 
+                      className="w-2 bg-critical rounded-t-sm"
+                      style={{ 
+                        height: `${Math.max(10, Math.random() * 60)}px`,
+                        animation: `pulse ${0.5 + Math.random()}s infinite alternate`
+                      }}
+                    />
+                  ))}
                 </div>
                 <div className="text-3xl font-bold text-text-primary mb-2 tracking-tight">
                   {formatTime(recordingTime)}
                 </div>
-                <p className="text-[14px] text-critical font-medium uppercase tracking-wider animate-pulse mb-8">
+                <p className="text-[14px] text-critical font-medium uppercase tracking-wider animate-pulse mb-4">
                   Recording Active
                 </p>
+                <div className="w-full max-w-sm h-32 overflow-y-auto bg-black/[0.02] border border-border rounded-md p-4 mb-8 text-[14px] text-text-secondary italic text-left">
+                  {liveTranscript}
+                  <span className="opacity-60"> {partialTranscript}</span>
+                  {!liveTranscript && !partialTranscript && "Listening..."}
+                </div>
                 <button 
                   onClick={handleStopRecording}
                   className="flex items-center space-x-2 bg-text-primary text-white px-6 py-2.5 rounded-md font-medium text-[14px] hover:bg-text-primary/90 transition-colors"
@@ -151,25 +380,48 @@ const AudioConsultation = () => {
         </div>
 
         {/* Upload Option */}
-        <div className={`flex flex-col p-8 bg-surface border border-dashed border-border rounded-xl ${status !== 'idle' ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div 
+          className={`flex flex-col p-8 bg-surface border-2 border-dashed rounded-xl transition-colors ${dragActive ? 'border-accent bg-accent/5' : 'border-border'} ${status !== 'idle' ? 'opacity-50 pointer-events-none' : ''}`}
+          onDragEnter={handleDrag}
+          onDragLeave={handleDrag}
+          onDragOver={handleDrag}
+          onDrop={handleDrop}
+        >
           <div className="flex-1 flex flex-col items-center justify-center py-10">
-            <div className="w-16 h-16 bg-background border border-border rounded-full flex items-center justify-center mb-6 text-text-secondary">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 transition-colors ${dragActive ? 'bg-accent/10 text-accent' : 'bg-background border border-border text-text-secondary'}`}>
               <Upload size={24} />
             </div>
             <h2 className="text-[18px] font-semibold text-text-primary mb-2">Upload Audio</h2>
             <p className="text-[14px] text-text-secondary text-center max-w-xs mb-8">
-              Supports MP3, WAV, or M4A formats. Max size 50MB.
+              Drag and drop or click to select. Supports MP3, WAV, or M4A formats. Max size 50MB.
             </p>
+            {uploadError && (
+              <p className="text-[13px] text-critical mb-4 text-center">{uploadError}</p>
+            )}
+            <input 
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              accept=".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/mp4"
+              onChange={handleFileChange}
+            />
             <button 
-              onClick={handleFileUpload}
+              onClick={() => fileInputRef.current?.click()}
               className="flex items-center space-x-2 border border-border bg-background text-text-primary px-6 py-2.5 rounded-md font-medium text-[14px] hover:bg-black/5 transition-colors"
             >
+              <FileAudio size={16} />
               <span>Select File</span>
             </button>
           </div>
         </div>
 
       </div>
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes pulse {
+          0% { height: 10px; }
+          100% { height: 60px; }
+        }
+      `}} />
     </div>
   );
 };

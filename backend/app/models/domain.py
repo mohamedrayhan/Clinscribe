@@ -9,10 +9,22 @@ class Doctor(Base):
     email = Column(String, unique=True, index=True)
     specialization = Column(String)
 
+class Patient(Base):
+    __tablename__ = "patients"
+    id = Column(Integer, primary_key=True, index=True)
+    doctor_id = Column(Integer, ForeignKey("doctors.id"))
+    name = Column(String, index=True)
+    dob = Column(String)
+    gender = Column(String)
+    contact = Column(String)
+    medical_history = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 class Consultation(Base):
     __tablename__ = "consultations"
     id = Column(Integer, primary_key=True, index=True)
     doctor_id = Column(Integer, ForeignKey("doctors.id"))
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=True)
     patient_reference = Column(String)
     input_type = Column(String) # 'audio' or 'text'
     status = Column(String, default="draft")

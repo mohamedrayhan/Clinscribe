@@ -1,13 +1,14 @@
 const API_BASE_URL = 'http://localhost:8000/api';
 
-export const createConsultation = async (doctorId: number, patientReference: string, inputType: string) => {
+export const createConsultation = async (doctorId: number, patientReference: string, inputType: string, patientId: number | null = null) => {
   const response = await fetch(`${API_BASE_URL}/consultations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       doctor_id: doctorId,
       patient_reference: patientReference,
-      input_type: inputType
+      input_type: inputType,
+      patient_id: patientId
     })
   });
   if (!response.ok) throw new Error('Failed to create consultation');

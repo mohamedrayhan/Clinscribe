@@ -1,13 +1,17 @@
 import { Mic, FileText, ArrowRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const NewConsultation = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const state = location.state as { patientId?: number, patientName?: string } || {};
 
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-10">
-        <h1 className="text-3xl font-semibold tracking-tight text-text-primary">New Clinical Encounter</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-text-primary">
+          {state.patientName ? `New Encounter for ${state.patientName}` : 'New Clinical Encounter'}
+        </h1>
         <p className="text-text-secondary mt-2 max-w-2xl text-[15px]">
           Create documentation from a consultation recording or paste an existing transcript.
         </p>
@@ -17,7 +21,7 @@ const NewConsultation = () => {
         
         {/* Audio Option */}
         <div 
-          onClick={() => navigate('/consultations/new/audio')}
+          onClick={() => navigate('/consultations/new/audio', { state })}
           className="group flex flex-col p-8 bg-surface border border-border hover:border-accent hover:shadow-sm transition-all rounded-xl cursor-pointer"
         >
           <div className="w-12 h-12 rounded-lg bg-background border border-border flex items-center justify-center mb-6 text-text-primary group-hover:text-accent group-hover:bg-accent/5 transition-colors">
@@ -35,7 +39,7 @@ const NewConsultation = () => {
 
         {/* Text Option */}
         <div 
-          onClick={() => navigate('/consultations/new/text')}
+          onClick={() => navigate('/consultations/new/text', { state })}
           className="group flex flex-col p-8 bg-surface border border-border hover:border-accent hover:shadow-sm transition-all rounded-xl cursor-pointer"
         >
           <div className="w-12 h-12 rounded-lg bg-background border border-border flex items-center justify-center mb-6 text-text-primary group-hover:text-accent group-hover:bg-accent/5 transition-colors">

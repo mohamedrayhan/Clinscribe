@@ -1,16 +1,26 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Loader2, Play } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import TranscriptViewer from '../components/clinical/TranscriptViewer';
 import ClinicalFacts from '../components/clinical/ClinicalFacts';
 import SOAPViewer from '../components/clinical/SOAPViewer';
 
 const TextConsultation = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const routeState = location.state as { patientId?: number, patientName?: string, liveTranscript?: string } || {};
   const [inputText, setInputText] = useState('');
   const [status, setStatus] = useState<'idle' | 'processing' | 'done'>('idle');
   const [activeStep, setActiveStep] = useState(0);
   const [activeEvidence, setActiveEvidence] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (routeState.liveTranscript) {
+      setInputText(routeState.liveTranscript);
+    }
+  }, [routeState.liveTranscript]);
+
+  // (truncated default mock data for brevity in edit rule - assuming it exists below)
 
   const defaultTranscript = [
     { id: '1', speaker: 'Doctor', text: 'What brings you in today?' },
@@ -45,7 +55,8 @@ const TextConsultation = () => {
 
     try {
       const api = await import('../api/client');
-      const consultation = await api.createConsultation(1, 'Patient', 'text');
+      const patientRef = routeState.patientName || 'Unknown Patient';
+      const consultation = await api.createConsultation(1, patientRef, 'text', routeState.patientId);
       
       setActiveStep(1);
       await api.processConsultation(consultation.id, inputText);
@@ -114,7 +125,7 @@ const TextConsultation = () => {
       {status === 'idle' && (
         <div className="flex-1 max-w-4xl flex flex-col">
           <p className="text-text-secondary mb-4 text-[14px]">
-            Paste the raw transcript of the consultation below.
+            Paste the raw transcript of the consultation below, or upload a .txt file.
           </p>
           <textarea
             className="flex-1 w-full bg-surface border border-border rounded-md p-4 text-[15px] text-text-primary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent resize-none font-sans"
@@ -122,7 +133,37 @@ const TextConsultation = () => {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
           ></textarea>
-          <div className="mt-6 flex justify-end">
+          <div className="mt-6 flex justify-between items-center">
+            <input 
+              type="file" 
+              accept=".txt,text/plain" 
+              className="hidden" 
+              id="txt-upload"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    if (ev.target?.result) {
+                      setInputText(ev.target.result as string);
+                    }
+                  };
+                  reader.readAsText(file);
+                }
+              }}
+            />
+            <div className="flex items-center space-x-3">
+              <label htmlFor="txt-upload" className="cursor-pointer flex items-center space-x-2 border border-border bg-surface text-text-primary px-4 py-2 rounded-md font-medium text-[13px] hover:bg-black/5 transition-colors">
+                Upload .txt
+              </label>
+              <button
+                type="button"
+                onClick={() => setInputText("Doctor: Good morning, what symptoms are you experiencing?\nPatient: I've had a severe fever, productive cough, and mild shortness of breath for four days.\nDoctor: Are you having any chest pain or palpitations?\nPatient: No chest pain, but severe fatigue and headaches.\nDoctor: Any current medications or known allergies?\nPatient: I take Metformin 500mg once daily for type 2 diabetes. No known drug allergies.")}
+                className="flex items-center space-x-2 border border-dashed border-accent/40 bg-accent/5 text-accent px-4 py-2 rounded-md font-medium text-[13px] hover:bg-accent/10 transition-colors"
+              >
+                Insert Sample Clinical Encounter
+              </button>
+            </div>
             <button 
               onClick={handleProcess}
               disabled={!inputText.trim()}

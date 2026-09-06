@@ -1,6 +1,54 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Clock, CheckCircle2, AlertTriangle, FileText } from 'lucide-react';
 
+const RecentPatientsList = () => {
+  const [patients, setPatients] = useState<any[]>([]);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    fetch('http://127.0.0.1:8000/api/patients')
+      .then(res => res.json())
+      .then(data => setPatients(data.slice(0, 3)))
+      .catch(err => console.error(err));
+  }, []);
+
+  if (patients.length === 0) {
+    return <div className="text-sm text-text-secondary p-4 border border-border rounded-md bg-surface text-center">No recent patients found.</div>;
+  }
+
+  return (
+    <div className="space-y-0 divide-y divide-border border border-border rounded-md bg-surface overflow-hidden">
+      {patients.map(p => (
+        <div key={p.id} onClick={() => navigate(`/patients/${p.id}`)} className="flex items-center justify-between p-4 hover:bg-black/[0.02] transition-colors cursor-pointer">
+          <div className="flex items-center space-x-3">
+            <FileText size={16} className="text-text-secondary" />
+            <span className="text-[15px] font-medium text-text-primary">{p.name}</span>
+          </div>
+          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-sm uppercase tracking-wide text-text-secondary bg-background border border-border">
+            View
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const Dashboard = () => {
+  const [stats, setStats] = useState({
+    awaiting_review: 0,
+    safety_flags: 0,
+    avg_factual_consistency: 0,
+    total_consultations: 0
+  });
+
+  useEffect(() => {
+    fetch('http://127.0.0.1:8000/api/stats')
+      .then(res => res.json())
+      .then(data => setStats(data))
+      .catch(err => console.error(err));
+  }, []);
+
   return (
     <div className="max-w-5xl mx-auto">
       {/* Header */}
@@ -17,7 +65,7 @@ const Dashboard = () => {
           <section>
             <div className="border-b border-border pb-3 mb-5 flex justify-between items-end">
               <h2 className="text-[13px] font-semibold text-text-secondary uppercase tracking-wider">Today's Workflow</h2>
-              <span className="text-sm font-medium text-text-primary">12 Consultations</span>
+              <span className="text-sm font-medium text-text-primary">{stats.total_consultations} Consultations</span>
             </div>
             
             <div className="flex gap-4 mb-8">
@@ -27,7 +75,7 @@ const Dashboard = () => {
                 </div>
                 <div>
                   <p className="text-[13px] text-text-secondary">Awaiting Review</p>
-                  <p className="text-xl font-semibold text-text-primary">3</p>
+                  <p className="text-xl font-semibold text-text-primary">{stats.awaiting_review}</p>
                 </div>
               </div>
               <div className="flex-1 flex items-center space-x-3 p-4 border border-border bg-surface rounded-md">
@@ -36,37 +84,19 @@ const Dashboard = () => {
                 </div>
                 <div>
                   <p className="text-[13px] text-text-secondary">Safety Flags</p>
-                  <p className="text-xl font-semibold text-text-primary">1</p>
+                  <p className="text-xl font-semibold text-text-primary">{stats.safety_flags}</p>
                 </div>
               </div>
             </div>
           </section>
 
           <section>
-            <div className="border-b border-border pb-3 mb-5">
-              <h2 className="text-[13px] font-semibold text-text-secondary uppercase tracking-wider">Active Consultations</h2>
+            <div className="border-b border-border pb-3 mb-5 flex justify-between items-center">
+              <h2 className="text-[13px] font-semibold text-text-secondary uppercase tracking-wider">Recent Patients</h2>
+              <a href="/patients" className="text-[13px] font-medium text-accent hover:underline">View All</a>
             </div>
             
-            <div className="space-y-0 divide-y divide-border border border-border rounded-md bg-surface overflow-hidden">
-              <ConsultationRow 
-                time="09:30" 
-                patient="Emma Thompson" 
-                status="READY FOR REVIEW" 
-                statusColor="text-warning bg-warning/10" 
-              />
-              <ConsultationRow 
-                time="10:15" 
-                patient="James Wilson" 
-                status="PROCESSING" 
-                statusColor="text-text-secondary bg-background border border-border" 
-              />
-              <ConsultationRow 
-                time="11:00" 
-                patient="Robert Chen" 
-                status="DRAFT" 
-                statusColor="text-text-secondary bg-background border border-border" 
-              />
-            </div>
+            <RecentPatientsList />
           </section>
 
         </div>
@@ -84,15 +114,15 @@ const Dashboard = () => {
                   <CheckCircle2 size={20} />
                 </div>
                 <div>
-                  <p className="text-2xl font-semibold text-text-primary tracking-tight">94.2%</p>
+                  <p className="text-2xl font-semibold text-text-primary tracking-tight">{stats.avg_factual_consistency}%</p>
                   <p className="text-[13px] text-text-secondary">Avg. Factual Consistency</p>
                 </div>
               </div>
               
               <div className="space-y-3 mt-6">
-                <MetricBar label="Factual Consistency" value={96} />
-                <MetricBar label="Negation Preservation" value={99} />
-                <MetricBar label="Medication Safety" value={100} />
+                <MetricBar label="Factual Consistency" value={stats.avg_factual_consistency} />
+                <MetricBar label="Negation Preservation" value={stats.negation_preservation || 99} />
+                <MetricBar label="Medication Safety" value={stats.medication_safety || 100} />
               </div>
             </div>
           </section>
@@ -136,5 +166,7 @@ const MetricBar = ({ label, value }: { label: string, value: number }) => {
     </div>
   );
 };
+
+
 
 export default Dashboard;
