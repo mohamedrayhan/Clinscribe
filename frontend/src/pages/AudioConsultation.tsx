@@ -19,6 +19,8 @@ const AudioConsultation = () => {
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
 
+  const turnsMapRef = useRef<Map<number, { speaker: string, text: string }>>(new Map());
+
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -91,21 +93,36 @@ const AudioConsultation = () => {
       }
       const { token } = await res.json();
       
+      turnsMapRef.current.clear();
+
       // 3. Connect to WS with speaker_labels enabled for diarization
       const wsUrl = `wss://streaming.assemblyai.com/v3/ws?sample_rate=16000&speech_model=universal-3-5-pro&mode=balanced&speaker_labels=true&token=${token}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       
-      const formatSpeakerTag = (label?: string | number) => {
-        if (!label && label !== 0) return 'Person 1';
-        const str = String(label).toUpperCase();
-        if (str === 'A' || str === '0' || str === 'SPEAKER 0' || str === 'SPEAKER A' || str === '1') {
-          return 'Doctor';
+      const renderFullTranscript = () => {
+        const sortedTurns = Array.from(turnsMapRef.current.entries())
+          .sort(([a], [b]) => a - b)
+          .map(([_, turn]) => `${turn.speaker}: ${turn.text}`);
+        const fullText = sortedTurns.join('\n');
+        liveTranscriptRef.current = fullText;
+        setLiveTranscript(fullText);
+        try { localStorage.setItem('clinscribe_latest_transcript', fullText); } catch (_) {}
+      };
+
+      const getSpeakerRole = (label: any, turnOrder: number) => {
+        if (label !== undefined && label !== null) {
+          const str = String(label).trim().toUpperCase();
+          if (str === '0' || str === 'A' || str === 'SPEAKER 0' || str === 'SPEAKER A' || str === '1') {
+            return 'Doctor';
+          }
+          if (str === '1' || str === 'B' || str === 'SPEAKER 1' || str === 'SPEAKER B' || str === '2') {
+            return 'Patient';
+          }
+          return `Speaker ${label}`;
         }
-        if (str === 'B' || str === '1' || str === 'SPEAKER 1' || str === 'SPEAKER B' || str === '2') {
-          return 'Patient';
-        }
-        return `Speaker ${label}`;
+        // If single microphone without separate voiceprint tag, alternate turns cleanly
+        return turnOrder % 2 === 0 ? 'Doctor' : 'Patient';
       };
 
       ws.onmessage = (e) => {
@@ -113,38 +130,41 @@ const AudioConsultation = () => {
           const msg = JSON.parse(e.data);
           console.log("AAI Message:", msg);
           
-          // Universal-3 streaming uses 'Turn' with 'transcript' and optional 'speaker_label'
+          // Universal-3 streaming Turn event
           if (msg.type === 'Turn') {
-            const rawSpeaker = msg.speaker_label ?? (msg.words && msg.words[0]?.speaker);
-            const speakerTag = formatSpeakerTag(rawSpeaker);
+            const turnOrder = typeof msg.turn_order === 'number' ? msg.turn_order : turnsMapRef.current.size;
+            const rawSpeaker = msg.speaker_label ?? (msg.words && msg.words.length > 0 ? msg.words[0].speaker : undefined);
+            const speakerRole = getSpeakerRole(rawSpeaker, turnOrder);
 
-            if (msg.end_of_turn && msg.transcript?.trim()) {
-              const formattedLine = `${speakerTag}: ${msg.transcript.trim()}`;
-              setLiveTranscript(prev => {
-                const updated = prev ? `${prev}\n${formattedLine}` : formattedLine;
-                liveTranscriptRef.current = updated;
-                try { localStorage.setItem('clinscribe_latest_transcript', updated); } catch (_) {}
-                return updated;
-              });
+            if (msg.end_of_turn) {
+              if (msg.transcript && msg.transcript.trim()) {
+                turnsMapRef.current.set(turnOrder, {
+                  speaker: speakerRole,
+                  text: msg.transcript.trim()
+                });
+                renderFullTranscript();
+              }
               setPartialTranscript('');
-            } else if (msg.transcript?.trim()) {
-              setPartialTranscript(`${speakerTag}: ${msg.transcript.trim()}`);
+            } else {
+              // Partial turn updates live preview without committing to permanent transcript
+              if (msg.transcript && msg.transcript.trim()) {
+                setPartialTranscript(`${speakerRole}: ${msg.transcript.trim()}`);
+              }
             }
-          } 
-          // Older/fallback format compatibility
-          else if (msg.message_type === 'FinalTranscript' && msg.text?.trim()) {
-            const speakerTag = formatSpeakerTag(msg.speaker);
-            const formattedLine = `${speakerTag}: ${msg.text.trim()}`;
-            setLiveTranscript(prev => {
-              const updated = prev ? `${prev}\n${formattedLine}` : formattedLine;
-              liveTranscriptRef.current = updated;
-              try { localStorage.setItem('clinscribe_latest_transcript', updated); } catch (_) {}
-              return updated;
+          }
+          // Diarization revision from AssemblyAI
+          else if (msg.type === 'SpeakerRevision' && Array.isArray(msg.revisions)) {
+            msg.revisions.forEach((rev: any) => {
+              const existing = turnsMapRef.current.get(rev.turn_order);
+              if (existing) {
+                const revisedSpeaker = getSpeakerRole(rev.speaker_label, rev.turn_order);
+                turnsMapRef.current.set(rev.turn_order, {
+                  ...existing,
+                  speaker: revisedSpeaker
+                });
+              }
             });
-            setPartialTranscript('');
-          } else if (msg.message_type === 'PartialTranscript' && msg.text?.trim()) {
-            const speakerTag = formatSpeakerTag(msg.speaker);
-            setPartialTranscript(`${speakerTag}: ${msg.text.trim()}`);
+            renderFullTranscript();
           }
         } catch (err) {
           console.error("Error parsing WS message:", err);
