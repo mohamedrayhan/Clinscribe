@@ -91,43 +91,60 @@ const AudioConsultation = () => {
       }
       const { token } = await res.json();
       
-      // 3. Connect to WS
-      const wsUrl = `wss://streaming.assemblyai.com/v3/ws?sample_rate=16000&speech_model=universal-3-5-pro&mode=balanced&token=${token}`;
+      // 3. Connect to WS with speaker_labels enabled for diarization
+      const wsUrl = `wss://streaming.assemblyai.com/v3/ws?sample_rate=16000&speech_model=universal-3-5-pro&mode=balanced&speaker_labels=true&token=${token}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       
+      const formatSpeakerTag = (label?: string | number) => {
+        if (!label && label !== 0) return 'Person 1';
+        const str = String(label).toUpperCase();
+        if (str === 'A' || str === '0' || str === 'SPEAKER 0' || str === 'SPEAKER A' || str === '1') {
+          return 'Doctor';
+        }
+        if (str === 'B' || str === '1' || str === 'SPEAKER 1' || str === 'SPEAKER B' || str === '2') {
+          return 'Patient';
+        }
+        return `Speaker ${label}`;
+      };
+
       ws.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data);
           console.log("AAI Message:", msg);
           
-          // Universal-3 streaming uses 'Turn' with 'transcript'
+          // Universal-3 streaming uses 'Turn' with 'transcript' and optional 'speaker_label'
           if (msg.type === 'Turn') {
-            if (msg.end_of_turn) {
+            const rawSpeaker = msg.speaker_label ?? (msg.words && msg.words[0]?.speaker);
+            const speakerTag = formatSpeakerTag(rawSpeaker);
+
+            if (msg.end_of_turn && msg.transcript?.trim()) {
+              const formattedLine = `${speakerTag}: ${msg.transcript.trim()}`;
               setLiveTranscript(prev => {
-                const updated = (prev ? prev + ' ' : '') + msg.transcript;
+                const updated = prev ? `${prev}\n${formattedLine}` : formattedLine;
                 liveTranscriptRef.current = updated;
                 try { localStorage.setItem('clinscribe_latest_transcript', updated); } catch (_) {}
                 return updated;
               });
               setPartialTranscript('');
-            } else {
-              setPartialTranscript(msg.transcript || '');
+            } else if (msg.transcript?.trim()) {
+              setPartialTranscript(`${speakerTag}: ${msg.transcript.trim()}`);
             }
           } 
           // Older/fallback format compatibility
-          else if (msg.message_type === 'FinalTranscript' && msg.text) {
+          else if (msg.message_type === 'FinalTranscript' && msg.text?.trim()) {
+            const speakerTag = formatSpeakerTag(msg.speaker);
+            const formattedLine = `${speakerTag}: ${msg.text.trim()}`;
             setLiveTranscript(prev => {
-              const updated = (prev ? prev + ' ' : '') + msg.text;
+              const updated = prev ? `${prev}\n${formattedLine}` : formattedLine;
               liveTranscriptRef.current = updated;
               try { localStorage.setItem('clinscribe_latest_transcript', updated); } catch (_) {}
               return updated;
             });
             setPartialTranscript('');
-          } else if (msg.message_type === 'PartialTranscript' && msg.text) {
-            setPartialTranscript(msg.text);
-          } else if (msg.text) {
-            setPartialTranscript(msg.text);
+          } else if (msg.message_type === 'PartialTranscript' && msg.text?.trim()) {
+            const speakerTag = formatSpeakerTag(msg.speaker);
+            setPartialTranscript(`${speakerTag}: ${msg.text.trim()}`);
           }
         } catch (err) {
           console.error("Error parsing WS message:", err);
@@ -420,10 +437,12 @@ const AudioConsultation = () => {
                 <p className="text-[14px] text-critical font-medium uppercase tracking-wider animate-pulse mb-4">
                   Recording Active
                 </p>
-                <div className="w-full max-w-sm h-32 overflow-y-auto bg-black/[0.02] border border-border rounded-md p-4 mb-8 text-[14px] text-text-secondary italic text-left">
+                <div className="w-full max-w-sm h-32 overflow-y-auto bg-black/[0.02] border border-border rounded-md p-4 mb-8 text-[13px] text-text-secondary text-left font-mono whitespace-pre-wrap leading-relaxed">
                   {liveTranscript}
-                  <span className="opacity-60"> {partialTranscript}</span>
-                  {!liveTranscript && !partialTranscript && "Listening..."}
+                  {partialTranscript && (
+                    <span className="opacity-60 italic block mt-1 text-accent"> {partialTranscript}</span>
+                  )}
+                  {!liveTranscript && !partialTranscript && <span className="italic text-text-secondary">Listening...</span>}
                 </div>
                 <button 
                   onClick={handleStopRecording}
