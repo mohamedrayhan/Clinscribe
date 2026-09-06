@@ -16,10 +16,36 @@ const AudioConsultation = () => {
   const [partialTranscript, setPartialTranscript] = useState('');
   const liveTranscriptRef = useRef('');
 
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
+
+  // Load available audio input devices (e.g. Laptop mic, Bluetooth headset)
+  useEffect(() => {
+    const loadAudioDevices = async () => {
+      try {
+        // Enumerate devices
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(d => d.kind === 'audioinput');
+        setAudioDevices(audioInputs);
+        if (audioInputs.length > 0 && !selectedDeviceId) {
+          setSelectedDeviceId(audioInputs[0].deviceId);
+        }
+      } catch (err) {
+        console.warn("Could not enumerate audio devices:", err);
+      }
+    };
+
+    loadAudioDevices();
+    navigator.mediaDevices?.addEventListener('devicechange', loadAudioDevices);
+    return () => {
+      navigator.mediaDevices?.removeEventListener('devicechange', loadAudioDevices);
+    };
+  }, []);
 
   // Formatting for timer (MM:SS)
   const formatTime = (seconds: number) => {
@@ -44,9 +70,19 @@ const AudioConsultation = () => {
       setLiveTranscript('');
       setPartialTranscript('');
       
-      // 1. Get Mic FIRST (so exceptions are caught)
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // 1. Get selected mic with explicit deviceId if chosen
+      const audioConstraints: MediaTrackConstraints = selectedDeviceId
+        ? { deviceId: { exact: selectedDeviceId } }
+        : true;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
       mediaStreamRef.current = stream;
+
+      // Refresh devices to get full labels if permission was just granted
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(d => d.kind === 'audioinput');
+        setAudioDevices(audioInputs);
+      } catch (_) {}
       
       // 2. Get Token
       const res = await fetch('http://127.0.0.1:8000/api/aai-token');
@@ -337,9 +373,31 @@ const AudioConsultation = () => {
                   <Mic size={32} />
                 </button>
                 <h2 className="text-[18px] font-semibold text-text-primary mb-2">Record Live</h2>
-                <p className="text-[14px] text-text-secondary text-center max-w-xs">
+                <p className="text-[14px] text-text-secondary text-center max-w-xs mb-5">
                   Browser-based recording. Ensure you have patient consent before beginning.
                 </p>
+
+                {/* Audio Input Device Selector */}
+                <div className="w-full max-w-xs flex flex-col items-center">
+                  <label className="text-[12px] font-medium text-text-secondary mb-1.5 self-start">
+                    Audio Input Source:
+                  </label>
+                  <select
+                    value={selectedDeviceId}
+                    onChange={(e) => setSelectedDeviceId(e.target.value)}
+                    className="w-full bg-background border border-border rounded-md px-3 py-2 text-[13px] text-text-primary focus:outline-none focus:border-accent"
+                  >
+                    {audioDevices.length === 0 ? (
+                      <option value="">Default Microphone</option>
+                    ) : (
+                      audioDevices.map((dev, idx) => (
+                        <option key={dev.deviceId || idx} value={dev.deviceId}>
+                          {dev.label || `Microphone ${idx + 1}`}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
               </>
             ) : (
               <>
