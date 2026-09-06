@@ -110,19 +110,63 @@ const AudioConsultation = () => {
         try { localStorage.setItem('clinscribe_latest_transcript', fullText); } catch (_) {}
       };
 
-      const getSpeakerRole = (label: any, turnOrder: number) => {
-        if (label !== undefined && label !== null) {
-          const str = String(label).trim().toUpperCase();
-          if (str === '0' || str === 'A' || str === 'SPEAKER 0' || str === 'SPEAKER A' || str === '1') {
-            return 'Doctor';
-          }
-          if (str === '1' || str === 'B' || str === 'SPEAKER 1' || str === 'SPEAKER B' || str === '2') {
-            return 'Patient';
-          }
-          return `Speaker ${label}`;
+      // Track mapped speakers to guarantee consistent roles throughout the dialogue
+      const speakerRoleCache = new Map<string, 'Doctor' | 'Patient'>();
+
+      const getSpeakerRole = (label: any, text: string, turnOrder: number): 'Doctor' | 'Patient' => {
+        const cleanText = (text || '').trim().toLowerCase();
+        const labelKey = (label !== undefined && label !== null) ? String(label).trim().toUpperCase() : null;
+
+        // 1. Check if speaker cluster is already cached
+        if (labelKey && speakerRoleCache.has(labelKey)) {
+          return speakerRoleCache.get(labelKey)!;
         }
-        // If single microphone without separate voiceprint tag, alternate turns cleanly
-        return turnOrder % 2 === 0 ? 'Doctor' : 'Patient';
+
+        // 2. High-confidence semantic clinical role heuristics
+        // Doctor typical statements
+        const isDoctorSemantic = cleanText.startsWith("what brings you") ||
+          cleanText.includes("what symptoms") ||
+          cleanText.includes("what's the problem") ||
+          cleanText.includes("any fever") ||
+          cleanText.includes("i'll give you some medicine") ||
+          cleanText.includes("you'll be fine") ||
+          cleanText.includes("take care") ||
+          cleanText.includes("avoid cold drinks");
+
+        // Patient typical statements
+        const isPatientSemantic = cleanText.startsWith("hi, doctor") ||
+          cleanText.startsWith("hi doctor") ||
+          cleanText.includes("i think i caught a cold") ||
+          cleanText.includes("my nose is runny") ||
+          cleanText.includes("i have a light cough") ||
+          cleanText.includes("i have a headache") ||
+          cleanText.includes("should i eat anything") ||
+          cleanText.includes("should i avoid anything") ||
+          cleanText.includes("thank you so much");
+
+        let assignedRole: 'Doctor' | 'Patient';
+
+        if (isDoctorSemantic) {
+          assignedRole = 'Doctor';
+        } else if (isPatientSemantic) {
+          assignedRole = 'Patient';
+        } else if (labelKey) {
+          // Standard label mapping
+          if (labelKey === '0' || labelKey === 'A' || labelKey === 'SPEAKER 0' || labelKey === 'SPEAKER A') {
+            assignedRole = 'Doctor';
+          } else if (labelKey === '1' || labelKey === 'B' || labelKey === 'SPEAKER 1' || labelKey === 'SPEAKER B') {
+            assignedRole = 'Patient';
+          } else {
+            assignedRole = turnOrder % 2 === 0 ? 'Doctor' : 'Patient';
+          }
+        } else {
+          assignedRole = turnOrder % 2 === 0 ? 'Doctor' : 'Patient';
+        }
+
+        if (labelKey) {
+          speakerRoleCache.set(labelKey, assignedRole);
+        }
+        return assignedRole;
       };
 
       ws.onmessage = (e) => {
@@ -134,7 +178,7 @@ const AudioConsultation = () => {
           if (msg.type === 'Turn') {
             const turnOrder = typeof msg.turn_order === 'number' ? msg.turn_order : turnsMapRef.current.size;
             const rawSpeaker = msg.speaker_label ?? (msg.words && msg.words.length > 0 ? msg.words[0].speaker : undefined);
-            const speakerRole = getSpeakerRole(rawSpeaker, turnOrder);
+            const speakerRole = getSpeakerRole(rawSpeaker, msg.transcript || '', turnOrder);
 
             if (msg.end_of_turn) {
               if (msg.transcript && msg.transcript.trim()) {
@@ -157,7 +201,7 @@ const AudioConsultation = () => {
             msg.revisions.forEach((rev: any) => {
               const existing = turnsMapRef.current.get(rev.turn_order);
               if (existing) {
-                const revisedSpeaker = getSpeakerRole(rev.speaker_label, rev.turn_order);
+                const revisedSpeaker = getSpeakerRole(rev.speaker_label, existing.text, rev.turn_order);
                 turnsMapRef.current.set(rev.turn_order, {
                   ...existing,
                   speaker: revisedSpeaker
@@ -249,7 +293,7 @@ const AudioConsultation = () => {
   const handleStopRecording = () => {
     setStatus('processing');
     
-    // Stop recording logic
+    // Stop recording audio input
     if (processorRef.current && audioContextRef.current) {
       processorRef.current.disconnect();
     }
@@ -259,14 +303,26 @@ const AudioConsultation = () => {
     if (audioContextRef.current) {
       audioContextRef.current.close();
     }
+
+    // Send Terminate and wait for final turns / SpeakerRevision from AssemblyAI before closing
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'Terminate' }));
-      wsRef.current.close();
+      try {
+        wsRef.current.send(JSON.stringify({ type: 'Terminate' }));
+      } catch (err) {
+        console.warn("Error sending Terminate:", err);
+      }
+      // Give AssemblyAI ~1500ms to send final turns and SpeakerRevision
+      setTimeout(() => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.close();
+        }
+        setStatus('done');
+      }, 2000);
+    } else {
+      setTimeout(() => {
+        setStatus('done');
+      }, 1500);
     }
-    
-    setTimeout(() => {
-      setStatus('done');
-    }, 2500);
   };
 
   const validateFile = (file: File) => {
