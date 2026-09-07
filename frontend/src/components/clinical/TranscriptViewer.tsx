@@ -1,6 +1,6 @@
 
 import clsx from 'clsx';
-import { Clock } from 'lucide-react';
+import { Clock, User, Stethoscope } from 'lucide-react';
 
 export interface TranscriptSegment {
   id: string;
@@ -18,45 +18,62 @@ interface TranscriptViewerProps {
 
 const TranscriptViewer = ({ segments, onSegmentClick, duration = '08:42 MIN' }: TranscriptViewerProps) => {
   return (
-    <div className="w-full bg-surface border border-border rounded-md flex flex-col h-full">
-      <div className="flex items-center justify-between p-4 border-b border-border bg-background/50">
-        <h2 className="text-[13px] font-semibold text-text-secondary uppercase tracking-wider">Clinical Transcript</h2>
-        <div className="flex items-center space-x-1.5 text-text-secondary">
-          <Clock size={14} />
-          <span className="text-[12px] font-medium tracking-wide">{duration}</span>
+    <div className="w-full bg-white border border-slate-200/80 rounded-2xl shadow-card flex flex-col h-full overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/50">
+        <div className="flex items-center gap-2">
+          <div className="h-2 w-2 rounded-full bg-primary-500 animate-pulse" />
+          <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Clinical Transcript</h2>
+        </div>
+        <div className="flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+          <Clock size={13} className="text-slate-500" />
+          <span>{duration}</span>
         </div>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        {segments.map((segment) => (
-          <div 
-            key={segment.id} 
-            onClick={() => onSegmentClick && onSegmentClick(segment.id)}
-            className={clsx(
-              "group relative pl-4 border-l-2 py-0.5 transition-colors cursor-pointer",
-              segment.speaker === 'Doctor' ? "border-text-primary" : "border-text-secondary/30",
-              segment.isHighlighted ? "bg-accent/10 -mx-2 px-6 border-accent rounded-r-sm" : "hover:bg-black/[0.02] -mx-2 px-6"
-            )}
-          >
-            <div className="flex items-baseline space-x-3 mb-1">
-              <span className={clsx(
-                "text-[11px] font-bold uppercase tracking-widest",
-                segment.speaker === 'Doctor' ? "text-text-primary" : "text-text-secondary"
-              )}>
-                {segment.speaker}
-              </span>
-              {segment.timestamp && (
-                <span className="text-[11px] text-text-secondary/50 font-medium">{segment.timestamp}</span>
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        {segments.map((segment) => {
+          const isDoc = segment.speaker === 'Doctor';
+          return (
+            <div 
+              key={segment.id} 
+              onClick={() => onSegmentClick && onSegmentClick(segment.id)}
+              className={clsx(
+                "p-3.5 rounded-xl transition-all cursor-pointer border text-sm leading-relaxed",
+                segment.isHighlighted 
+                  ? "bg-primary-50/80 border-primary-300 ring-2 ring-primary-500/20 shadow-sm"
+                  : isDoc 
+                    ? "bg-slate-50/70 border-slate-200/70 hover:bg-slate-100/60"
+                    : "bg-white border-slate-200/90 hover:border-slate-300"
               )}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <div className={clsx(
+                    "w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold",
+                    isDoc ? "bg-primary-600 text-white" : "bg-emerald-600 text-white"
+                  )}>
+                    {isDoc ? <Stethoscope size={11} /> : <User size={11} />}
+                  </div>
+                  <span className={clsx(
+                    "text-xs font-bold tracking-tight",
+                    isDoc ? "text-primary-950" : "text-emerald-950"
+                  )}>
+                    {segment.speaker}
+                  </span>
+                </div>
+                {segment.timestamp && (
+                  <span className="text-[11px] text-slate-400 font-medium">{segment.timestamp}</span>
+                )}
+              </div>
+              <p className={clsx(
+                "pl-6.5 text-[13.5px]",
+                isDoc ? "text-slate-800" : "text-slate-700"
+              )}>
+                {segment.text}
+              </p>
             </div>
-            <p className={clsx(
-              "text-[15px] leading-relaxed",
-              segment.speaker === 'Doctor' ? "text-text-primary" : "text-text-secondary"
-            )}>
-              {segment.text}
-            </p>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -5,30 +5,36 @@ from app.database.session import Base
 class Doctor(Base):
     __tablename__ = "doctors"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    email = Column(String, unique=True, index=True)
-    specialization = Column(String)
+    name = Column(String, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    specialization = Column(String, default="General Practice")
+    hospital_name = Column(String, default="Clinscribe Medical Center")
+    phone = Column(String, nullable=True, default="")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Patient(Base):
     __tablename__ = "patients"
     id = Column(Integer, primary_key=True, index=True)
-    doctor_id = Column(Integer, ForeignKey("doctors.id"))
-    name = Column(String, index=True)
-    dob = Column(String)
-    gender = Column(String)
-    contact = Column(String)
-    medical_history = Column(Text)
+    doctor_id = Column(Integer, ForeignKey("doctors.id"), index=True, nullable=False)
+    name = Column(String, index=True, nullable=False)
+    dob = Column(String, nullable=True)
+    gender = Column(String, nullable=True)
+    contact = Column(String, nullable=True)
+    medical_history = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 class Consultation(Base):
     __tablename__ = "consultations"
     id = Column(Integer, primary_key=True, index=True)
-    doctor_id = Column(Integer, ForeignKey("doctors.id"))
+    doctor_id = Column(Integer, ForeignKey("doctors.id"), index=True, nullable=False)
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=True)
-    patient_reference = Column(String)
-    input_type = Column(String) # 'audio' or 'text'
-    status = Column(String, default="draft")
+    patient_reference = Column(String, default="Unknown Patient")
+    input_type = Column(String, default="text") # 'audio' or 'text'
+    status = Column(String, default="draft") # 'draft', 'approved', 'rejected', 'processed'
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 class Transcript(Base):
     __tablename__ = "transcripts"
@@ -47,6 +53,7 @@ class ClinicalFacts(Base):
     history = Column(JSON)
     negations = Column(JSON)
     uncertainties = Column(JSON)
+    duration = Column(String, default="Not documented")
 
 class SOAPNote(Base):
     __tablename__ = "soap_notes"
