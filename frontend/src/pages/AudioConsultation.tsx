@@ -379,13 +379,13 @@ const AudioConsultation = () => {
 
   if (status === 'done') {
     return (
-      <div className="max-w-4xl mx-auto flex flex-col items-center justify-center mt-20">
-        <div className="w-16 h-16 bg-success/10 text-success rounded-full flex items-center justify-center mb-6">
-          <Play size={24} />
+      <div className="max-w-2xl mx-auto flex flex-col items-center justify-center py-20 text-center">
+        <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-200 flex items-center justify-center mb-6 shadow-sm">
+          <Play size={26} className="fill-current" />
         </div>
-        <h2 className="text-xl font-semibold text-text-primary mb-2">Processing Complete</h2>
-        <p className="text-text-secondary mb-8 text-center max-w-md">
-          The audio has been successfully transcribed, diarized, and analyzed.
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">Audio Processing Complete</h2>
+        <p className="text-sm text-slate-500 mb-8 max-w-md">
+          The consultation has been successfully transcribed, diarized with speaker separation, and prepared for SOAP extraction.
         </p>
         <button 
           onClick={() => {
@@ -397,9 +397,9 @@ const AudioConsultation = () => {
               } 
             });
           }}
-          className="bg-accent text-white px-6 py-2.5 rounded-md font-medium text-[14px] hover:bg-accent/90 transition-colors"
+          className="inline-flex items-center gap-2 bg-primary-600 text-white px-7 py-3 rounded-xl font-semibold text-sm hover:bg-primary-500 transition-all shadow-sm"
         >
-          View Clinical Documentation
+          <span>View Clinical Documentation</span>
         </button>
       </div>
     );
@@ -407,23 +407,28 @@ const AudioConsultation = () => {
 
   if (status === 'processing') {
     return (
-      <div className="max-w-2xl mx-auto flex flex-col items-center justify-center mt-20">
-        <h2 className="text-[13px] font-semibold text-text-secondary uppercase tracking-wider mb-8">Processing Audio</h2>
-        <div className="w-full space-y-4">
-          <div className="flex items-center justify-between p-3 border border-border rounded-md bg-surface shadow-sm">
-            <span className="text-[14px] font-medium text-accent">Noise Reduction & Segmentation</span>
-            <div className="flex items-center space-x-2 text-accent text-[12px] font-semibold uppercase tracking-wider">
-              <Loader2 size={14} className="animate-spin" />
+      <div className="max-w-xl mx-auto flex flex-col items-center justify-center py-20">
+        <div className="w-12 h-12 rounded-2xl bg-primary-50 border border-primary-200 flex items-center justify-center mb-6 text-primary-600 shadow-sm">
+          <Loader2 size={22} className="animate-spin" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Processing Audio Stream</h2>
+        <p className="text-xs text-slate-500 mb-8">Executing neural speech recognition and speaker diarization...</p>
+        
+        <div className="w-full space-y-3">
+          <div className="flex items-center justify-between p-4 border border-primary-200 bg-primary-50/50 rounded-xl shadow-sm">
+            <span className="text-xs font-bold text-primary-700">Noise Reduction & Filtering</span>
+            <div className="flex items-center space-x-1.5 text-primary-600 text-[11px] font-bold uppercase tracking-wider">
+              <Loader2 size={13} className="animate-spin" />
               <span>Processing</span>
             </div>
           </div>
-          <div className="flex items-center justify-between p-3 border border-border rounded-md bg-surface opacity-50">
-            <span className="text-[14px] font-medium text-text-secondary">Speaker Diarization</span>
-            <span className="text-text-secondary text-[12px] font-semibold uppercase tracking-wider">Waiting</span>
+          <div className="flex items-center justify-between p-4 border border-slate-200 bg-white rounded-xl opacity-60">
+            <span className="text-xs font-semibold text-slate-500">Speaker Diarization</span>
+            <span className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider">Waiting</span>
           </div>
-          <div className="flex items-center justify-between p-3 border border-border rounded-md bg-surface opacity-50">
-            <span className="text-[14px] font-medium text-text-secondary">Speech-to-Text Transcription</span>
-            <span className="text-text-secondary text-[12px] font-semibold uppercase tracking-wider">Waiting</span>
+          <div className="flex items-center justify-between p-4 border border-slate-200 bg-white rounded-xl opacity-60">
+            <span className="text-xs font-semibold text-slate-500">Speech-to-Text Transcription</span>
+            <span className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider">Waiting</span>
           </div>
         </div>
       </div>
@@ -431,18 +436,22 @@ const AudioConsultation = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="flex items-center space-x-4 mb-10">
+    <div className="max-w-5xl mx-auto space-y-6 pb-12">
+      <div className="flex items-center space-x-4">
         <button 
           onClick={() => navigate(-1)}
-          className="p-2 hover:bg-black/5 rounded-md text-text-secondary transition-colors"
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-900"
         >
-          <ArrowLeft size={18} />
+          <ArrowLeft size={16} />
         </button>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-text-primary">Audio Consultation</h1>
-          <p className="text-text-secondary mt-1 text-[15px]">
-            Record a live encounter or upload an existing audio file.
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">Audio Consultation</h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {routeState.patientName ? (
+              <span>Recording encounter for: <strong className="text-primary-700">{routeState.patientName}</strong></span>
+            ) : (
+              'Record a live ambient encounter or upload an existing audio file.'
+            )}
           </p>
         </div>
       </div>
@@ -450,10 +459,10 @@ const AudioConsultation = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
         {/* Record Option */}
-        <div className="flex flex-col p-8 bg-surface border border-border rounded-xl">
-          <div className="flex-1 flex flex-col items-center justify-center py-10">
+        <div className="flex flex-col p-8 bg-white border border-slate-200/80 rounded-2xl shadow-card">
+          <div className="flex-1 flex flex-col items-center justify-center py-6">
             {uploadError && status === 'idle' && (
-              <div className="w-full max-w-xs mb-6 p-3 bg-critical/10 border border-critical/20 rounded-md text-[13px] text-critical text-center font-medium">
+              <div className="w-full max-w-xs mb-6 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 text-center font-medium">
                 {uploadError}
               </div>
             )}
@@ -461,24 +470,24 @@ const AudioConsultation = () => {
               <>
                 <button 
                   onClick={handleStartRecording}
-                  className="w-20 h-20 bg-critical/10 text-critical rounded-full flex items-center justify-center hover:bg-critical/20 transition-colors mb-6"
+                  className="w-20 h-20 bg-rose-50 text-rose-600 border border-rose-200 rounded-full flex items-center justify-center hover:bg-rose-600 hover:text-white transition-all duration-300 shadow-sm mb-6 group cursor-pointer"
                 >
-                  <Mic size={32} />
+                  <Mic size={32} className="group-hover:scale-110 transition-transform" />
                 </button>
-                <h2 className="text-[18px] font-semibold text-text-primary mb-2">Record Live</h2>
-                <p className="text-[14px] text-text-secondary text-center max-w-xs mb-5">
-                  Browser-based recording. Ensure you have patient consent before beginning.
+                <h2 className="text-lg font-bold text-slate-900 mb-1">Record Live Encounter</h2>
+                <p className="text-xs text-slate-500 text-center max-w-xs mb-6">
+                  Ambient clinical recording. Ensure you have patient consent before beginning.
                 </p>
 
                 {/* Audio Input Device Selector */}
                 <div className="w-full max-w-xs flex flex-col items-center">
-                  <label className="text-[12px] font-medium text-text-secondary mb-1.5 self-start">
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 self-start">
                     Audio Input Source:
                   </label>
                   <select
                     value={selectedDeviceId}
                     onChange={(e) => setSelectedDeviceId(e.target.value)}
-                    className="w-full bg-background border border-border rounded-md px-3 py-2 text-[13px] text-text-primary focus:outline-none focus:border-accent"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-primary-500 focus:bg-white"
                   >
                     {audioDevices.length === 0 ? (
                       <option value="">Default Microphone</option>
@@ -494,37 +503,38 @@ const AudioConsultation = () => {
               </>
             ) : (
               <>
-                <div className="w-full flex justify-center mb-6 h-20 items-end space-x-1 opacity-70">
-                  {/* CSS Animated Waveform Mock */}
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((bar) => (
+                <div className="w-full flex justify-center mb-6 h-20 items-end space-x-1.5 opacity-90">
+                  {/* CSS Animated Waveform */}
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((bar) => (
                     <div 
                       key={bar} 
-                      className="w-2 bg-critical rounded-t-sm"
+                      className="w-2 bg-rose-500 rounded-t-sm"
                       style={{ 
                         height: `${Math.max(10, Math.random() * 60)}px`,
-                        animation: `pulse ${0.5 + Math.random()}s infinite alternate`
+                        animation: `pulse ${0.4 + Math.random() * 0.6}s infinite alternate`
                       }}
                     />
                   ))}
                 </div>
-                <div className="text-3xl font-bold text-text-primary mb-2 tracking-tight">
+                <div className="text-3xl font-extrabold text-slate-900 mb-1 tracking-tight font-mono">
                   {formatTime(recordingTime)}
                 </div>
-                <p className="text-[14px] text-critical font-medium uppercase tracking-wider animate-pulse mb-4">
-                  Recording Active
-                </p>
-                <div className="w-full max-w-sm h-32 overflow-y-auto bg-black/[0.02] border border-border rounded-md p-4 mb-8 text-[13px] text-text-secondary text-left font-mono whitespace-pre-wrap leading-relaxed">
+                <div className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 border border-rose-200 px-3 py-0.5 text-xs font-bold text-rose-700 animate-pulse mb-4">
+                  <span className="h-1.5 w-1.5 rounded-full bg-rose-600" />
+                  <span>Recording Active</span>
+                </div>
+                <div className="w-full max-w-sm h-32 overflow-y-auto bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 text-xs text-slate-700 text-left font-mono whitespace-pre-wrap leading-relaxed shadow-inner">
                   {liveTranscript}
                   {partialTranscript && (
-                    <span className="opacity-60 italic block mt-1 text-accent"> {partialTranscript}</span>
+                    <span className="opacity-75 italic block mt-1 text-primary-600"> {partialTranscript}</span>
                   )}
-                  {!liveTranscript && !partialTranscript && <span className="italic text-text-secondary">Listening...</span>}
+                  {!liveTranscript && !partialTranscript && <span className="italic text-slate-400">Listening to conversation...</span>}
                 </div>
                 <button 
                   onClick={handleStopRecording}
-                  className="flex items-center space-x-2 bg-text-primary text-white px-6 py-2.5 rounded-md font-medium text-[14px] hover:bg-text-primary/90 transition-colors"
+                  className="flex items-center space-x-2 bg-slate-900 text-white px-6 py-2.5 rounded-xl font-semibold text-xs hover:bg-slate-800 transition-colors shadow-sm"
                 >
-                  <Square size={16} className="fill-current" />
+                  <Square size={14} className="fill-current" />
                   <span>Stop & Process</span>
                 </button>
               </>
@@ -534,22 +544,22 @@ const AudioConsultation = () => {
 
         {/* Upload Option */}
         <div 
-          className={`flex flex-col p-8 bg-surface border-2 border-dashed rounded-xl transition-colors ${dragActive ? 'border-accent bg-accent/5' : 'border-border'} ${status !== 'idle' ? 'opacity-50 pointer-events-none' : ''}`}
+          className={`flex flex-col p-8 bg-white border-2 border-dashed rounded-2xl shadow-card transition-colors ${dragActive ? 'border-primary-500 bg-primary-50/10' : 'border-slate-200/90'} ${status !== 'idle' ? 'opacity-50 pointer-events-none' : ''}`}
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
           onDragOver={handleDrag}
           onDrop={handleDrop}
         >
-          <div className="flex-1 flex flex-col items-center justify-center py-10">
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 transition-colors ${dragActive ? 'bg-accent/10 text-accent' : 'bg-background border border-border text-text-secondary'}`}>
+          <div className="flex-1 flex flex-col items-center justify-center py-6">
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors ${dragActive ? 'bg-primary-500 text-white' : 'bg-slate-50 border border-slate-200 text-slate-500'}`}>
               <Upload size={24} />
             </div>
-            <h2 className="text-[18px] font-semibold text-text-primary mb-2">Upload Audio</h2>
-            <p className="text-[14px] text-text-secondary text-center max-w-xs mb-8">
-              Drag and drop or click to select. Supports MP3, WAV, or M4A formats. Max size 50MB.
+            <h2 className="text-lg font-bold text-slate-900 mb-1">Upload Audio File</h2>
+            <p className="text-xs text-slate-500 text-center max-w-xs mb-8">
+              Drag and drop or select an audio file. Supports MP3, WAV, or M4A formats up to 50MB.
             </p>
             {uploadError && (
-              <p className="text-[13px] text-critical mb-4 text-center">{uploadError}</p>
+              <p className="text-xs text-rose-600 mb-4 text-center font-medium">{uploadError}</p>
             )}
             <input 
               type="file"
@@ -560,9 +570,9 @@ const AudioConsultation = () => {
             />
             <button 
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center space-x-2 border border-border bg-background text-text-primary px-6 py-2.5 rounded-md font-medium text-[14px] hover:bg-black/5 transition-colors"
+              className="flex items-center space-x-2 border border-slate-200 bg-white text-slate-700 px-5 py-2.5 rounded-xl font-semibold text-xs hover:bg-slate-50 transition-colors shadow-sm"
             >
-              <FileAudio size={16} />
+              <FileAudio size={15} />
               <span>Select File</span>
             </button>
           </div>
