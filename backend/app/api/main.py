@@ -53,9 +53,6 @@ def process_consultation(consultation_id: int, request: schemas.ProcessRequest, 
     }
     
     try:
-        # Force bypass to avoid downloading the 3GB base model during dev
-        raise Exception("LoRA checkpoint bypass active. Forcing mock fallback.")
-            
         from app.services.llm_service import generate_clinical_documentation
         print("Calling fine-tuned LLM...")
         llm_output = generate_clinical_documentation(request.transcript_text)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, CheckCircle2, AlertTriangle, FileText } from 'lucide-react';
 
@@ -39,7 +39,9 @@ const Dashboard = () => {
     awaiting_review: 0,
     safety_flags: 0,
     avg_factual_consistency: 0,
-    total_consultations: 0
+    total_consultations: 0,
+    negation_preservation: 0,
+    medication_safety: 0
   });
 
   useEffect(() => {
@@ -133,23 +135,6 @@ const Dashboard = () => {
   );
 };
 
-const ConsultationRow = ({ time, patient, status, statusColor }: { time: string, patient: string, status: string, statusColor: string }) => {
-  return (
-    <div className="flex items-center justify-between p-4 hover:bg-black/[0.02] transition-colors cursor-pointer">
-      <div className="flex items-center space-x-6">
-        <span className="text-[14px] font-medium text-text-secondary w-12">{time}</span>
-        <div className="flex items-center space-x-3">
-          <FileText size={16} className="text-text-secondary" />
-          <span className="text-[15px] font-medium text-text-primary">{patient}</span>
-        </div>
-      </div>
-      <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-sm uppercase tracking-wide ${statusColor}`}>
-        {status}
-      </span>
-    </div>
-  );
-};
-
 const MetricBar = ({ label, value }: { label: string, value: number }) => {
   return (
     <div>
@@ -170,3 +155,4 @@ const MetricBar = ({ label, value }: { label: string, value: number }) => {
 
 
 export default Dashboard;
+

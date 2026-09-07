@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState,  useEffect } from 'react';
 import { ArrowLeft, Loader2, Play } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import TranscriptViewer from '../components/clinical/TranscriptViewer';

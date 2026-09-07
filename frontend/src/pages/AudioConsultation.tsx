@@ -73,7 +73,7 @@ const AudioConsultation = () => {
       setPartialTranscript('');
       
       // 1. Get selected mic with explicit deviceId if chosen
-      const audioConstraints: MediaTrackConstraints = selectedDeviceId
+      const audioConstraints: boolean | MediaTrackConstraints = selectedDeviceId
         ? { deviceId: { exact: selectedDeviceId } }
         : true;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });

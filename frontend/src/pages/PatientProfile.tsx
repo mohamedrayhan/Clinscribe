@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit2, Clock, CheckCircle2, FileText, Loader2 } from 'lucide-react';
+import { ArrowLeft, Edit2, Clock, FileText, Loader2 } from 'lucide-react';
 
 interface Patient {
   id: number;
